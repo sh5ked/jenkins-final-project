@@ -67,9 +67,19 @@ pipeline {
 
         stage('Start Services') {
             steps {
-                sh 'docker compose up -d --build'
-                sh 'docker network connect jenkins-final-project_final-network jenkins || true'
-                sh 'docker compose ps'
+                sh '''
+                    export BUILD_NUMBER="${BUILD_NUMBER}"
+                    export GIT_COMMIT="$(git rev-parse HEAD)"
+
+                    echo "Build Number: ${BUILD_NUMBER}"
+                    echo "Git Commit: ${GIT_COMMIT}"
+
+                    docker compose up -d --build
+
+                    docker network connect jenkins-final-project_final-network jenkins || true
+
+                    docker compose ps
+                '''
             }
         }
 

@@ -4,10 +4,9 @@ WORKDIR /app
 
 COPY package*.json ./
 
-RUN npm ci
+RUN npm ci --omit=dev
 
-COPY app.js ./
-
+COPY . .
 
 ARG BUILD_NUMBER=local
 ARG GIT_COMMIT=local
