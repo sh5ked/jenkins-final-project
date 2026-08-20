@@ -3,31 +3,18 @@ services:
   api:
     build:
       context: ./api
-      args:
-        BUILD_NUMBER: ${BUILD_NUMBER:-local}
-        GIT_COMMIT: ${GIT_COMMIT:-local}
-    container_name: final-api
-    environment:
-      PORT: 3000
-      BUILD_NUMBER: ${BUILD_NUMBER:-local}
-      GIT_COMMIT: ${GIT_COMMIT:-local}
+    expose:
+      - "3000"
     networks:
       - final-network
 
   web:
     build:
       context: ./web
-      args:
-        BUILD_NUMBER: ${BUILD_NUMBER:-local}
-        GIT_COMMIT: ${GIT_COMMIT:-local}
-    container_name: final-web
-    environment:
-      PORT: 3000
-      API_URL: http://api:3000
-      BUILD_NUMBER: ${BUILD_NUMBER:-local}
-      GIT_COMMIT: ${GIT_COMMIT:-local}
     ports:
       - "8085:3000"
+    environment:
+      API_URL: http://api:3000
     depends_on:
       - api
     networks:
@@ -35,3 +22,4 @@ services:
 
 networks:
   final-network:
+    driver: bridge
