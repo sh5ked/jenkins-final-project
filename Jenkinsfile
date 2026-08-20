@@ -2,11 +2,33 @@ pipeline {
     agent any
 
     environment {
-        COMPOSE_PROJECT_NAME = "jenkins-final-project"
-        WEB_PORT = "8085"
+        GIT_COMMIT_SHORT = ''
+        CURRENT_BRANCH = ''
     }
 
     stages {
+
+        stage('Identify Branch') {
+            steps {
+                script {
+                    env.CURRENT_BRANCH = sh(
+                        script: 'git rev-parse --abbrev-ref HEAD',
+                        returnStdout: true
+                    ).trim()
+
+                    env.GIT_COMMIT_SHORT = sh(
+                        script: 'git rev-parse --short=7 HEAD',
+                        returnStdout: true
+                    ).trim()
+
+                    echo "======================================"
+                    echo "Branch: ${env.CURRENT_BRANCH}"
+                    echo "Build: ${env.BUILD_NUMBER}"
+                    echo "Commit: ${env.GIT_COMMIT_SHORT}"
+                    echo "======================================"
+                }
+            }
+        }
 
         stage('API Tests') {
             steps {
@@ -82,44 +104,33 @@ pipeline {
             }
         }
 
-        /*
-         * DEV:
-         * Build only.
-         *
-         * MAIN:
-         * Build and continue to deployment.
-         */
         stage('Docker Build') {
             steps {
                 sh '''
-                    export BUILD_NUMBER=${BUILD_NUMBER}
-                    export GIT_COMMIT=$(git rev-parse HEAD)
-
                     echo "======================================"
-                    echo "Branch: ${BRANCH_NAME}"
-                    echo "Build Number: ${BUILD_NUMBER}"
-                    echo "Git Commit: ${GIT_COMMIT}"
+                    echo "Docker Build"
+                    echo "Branch: $CURRENT_BRANCH"
+                    echo "Build Number: $BUILD_NUMBER"
+                    echo "Commit: $GIT_COMMIT_SHORT"
                     echo "======================================"
 
                     docker compose build \
-                        --build-arg BUILD_NUMBER=${BUILD_NUMBER} \
-                        --build-arg GIT_COMMIT=${GIT_COMMIT}
+                        --build-arg BUILD_NUMBER=$BUILD_NUMBER \
+                        --build-arg GIT_COMMIT=$GIT_COMMIT_SHORT
                 '''
             }
         }
 
         stage('Start Services - DEV') {
             when {
-                branch 'dev'
+                expression {
+                    env.CURRENT_BRANCH == 'dev'
+                }
             }
 
             steps {
                 sh '''
-                    echo "DEV branch detected."
-                    echo "Starting services for integration testing..."
-
-                    export BUILD_NUMBER=${BUILD_NUMBER}
-                    export GIT_COMMIT=$(git rev-parse HEAD)
+                    echo "Starting DEV services..."
 
                     docker compose up -d
 
@@ -132,7 +143,9 @@ pipeline {
 
         stage('Integration Test - DEV') {
             when {
-                branch 'dev'
+                expression {
+                    env.CURRENT_BRANCH == 'dev'
+                }
             }
 
             steps {
@@ -146,55 +159,44 @@ pipeline {
         }
 
         /*
-         * MAIN ONLY
+         * MAIN
          *
-         * This is the preparation stage for Blue-Green deployment.
-         * The old version remains untouched.
+         * בשלב הזה אנחנו עדיין לא מבצעים Blue-Green מלא.
+         * רק מכינים ומוודאים שהגרסה החדשה ניתנת להרצה.
          */
+
         stage('Prepare Blue-Green - MAIN') {
             when {
-                branch 'main'
+                expression {
+                    env.CURRENT_BRANCH == 'main'
+                }
             }
 
             steps {
                 sh '''
                     echo "======================================"
-                    echo "MAIN branch detected"
                     echo "Preparing Blue-Green deployment"
+                    echo "Build: $BUILD_NUMBER"
+                    echo "Commit: $GIT_COMMIT_SHORT"
                     echo "======================================"
 
-                    export BUILD_NUMBER=${BUILD_NUMBER}
-                    export GIT_COMMIT=$(git rev-parse HEAD)
-
-                    echo "Build Number: ${BUILD_NUMBER}"
-                    echo "Git Commit: ${GIT_COMMIT}"
-
-                    docker compose config
+                    docker compose down --remove-orphans || true
                 '''
             }
         }
 
-        /*
-         * MAIN ONLY
-         *
-         * Start the new version on the temporary/internal
-         * Compose network.
-         *
-         * We do NOT replace the currently running version here.
-         */
         stage('Start New Version - MAIN') {
             when {
-                branch 'main'
+                expression {
+                    env.CURRENT_BRANCH == 'main'
+                }
             }
 
             steps {
                 sh '''
-                    echo "Starting NEW version..."
+                    echo "Starting new version for Blue-Green..."
 
-                    export BUILD_NUMBER=${BUILD_NUMBER}
-                    export GIT_COMMIT=$(git rev-parse HEAD)
-
-                    docker compose up -d --build
+                    docker compose up -d
 
                     sleep 5
 
@@ -203,43 +205,37 @@ pipeline {
             }
         }
 
-        /*
-         * MAIN ONLY
-         *
-         * First health check of the new version.
-         */
         stage('Health Check - MAIN') {
             when {
-                branch 'main'
+                expression {
+                    env.CURRENT_BRANCH == 'main'
+                }
             }
 
             steps {
                 sh '''
-                    echo "Checking new WEB version..."
+                    echo "Checking WEB health..."
 
                     docker compose exec -T web \
                         wget -qO- http://localhost:3000/health
 
                     echo ""
-                    echo "Checking new API version..."
+
+                    echo "Checking API health..."
 
                     docker compose exec -T api \
                         wget -qO- http://localhost:3000/health
 
                     echo ""
-                    echo "Health checks passed."
                 '''
             }
         }
 
-        /*
-         * MAIN ONLY
-         *
-         * Integration test against the new version.
-         */
         stage('Integration Test - MAIN') {
             when {
-                branch 'main'
+                expression {
+                    env.CURRENT_BRANCH == 'main'
+                }
             }
 
             steps {
@@ -253,34 +249,30 @@ pipeline {
         }
 
         /*
-         * MAIN ONLY
+         * Blue-Green אמיתי ייכנס כאן בשלב הבא:
          *
-         * This is intentionally left as a separate stage.
-         * The actual traffic switch will be implemented here
-         * in the next step.
+         * 1. גרסה חדשה עולה בפורט זמני
+         * 2. Health Check
+         * 3. Integration Test
+         * 4. אם הצליח - Switch
+         * 5. אם נכשל - מחיקת החדשה והשארת הישנה
          */
+
         stage('Blue-Green Switch - MAIN') {
             when {
-                branch 'main'
+                expression {
+                    env.CURRENT_BRANCH == 'main'
+                }
             }
 
             steps {
-                sh '''
-                    echo "======================================"
-                    echo "BLUE-GREEN VALIDATION PASSED"
-                    echo "======================================"
-
-                    echo "New version is healthy."
-                    echo "Integration test passed."
-                    echo ""
-                    echo "Traffic switch stage reached successfully."
-                    echo "Actual traffic switch will be implemented here."
-                '''
+                echo "Blue-Green switch will be implemented in the next step."
             }
         }
     }
 
     post {
+
         always {
             sh '''
                 echo "Cleaning temporary Compose resources..."
@@ -292,16 +284,18 @@ pipeline {
         success {
             echo "======================================"
             echo "PIPELINE SUCCESS"
-            echo "Branch: ${BRANCH_NAME}"
-            echo "Build: ${BUILD_NUMBER}"
+            echo "Branch: ${env.CURRENT_BRANCH}"
+            echo "Build: ${env.BUILD_NUMBER}"
+            echo "Commit: ${env.GIT_COMMIT_SHORT}"
             echo "======================================"
         }
 
         failure {
             echo "======================================"
             echo "PIPELINE FAILED"
-            echo "Branch: ${BRANCH_NAME}"
-            echo "Build: ${BUILD_NUMBER}"
+            echo "Branch: ${env.CURRENT_BRANCH}"
+            echo "Build: ${env.BUILD_NUMBER}"
+            echo "Commit: ${env.GIT_COMMIT_SHORT}"
             echo "======================================"
         }
     }
