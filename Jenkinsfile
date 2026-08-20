@@ -24,6 +24,7 @@ pipeline {
         stage('Start Services') {
             steps {
                 sh 'docker compose up -d --build'
+                sh 'docker network connect jenkins-final-project_final-network jenkins || true'
                 sh 'docker compose ps'
             }
         }
@@ -31,7 +32,7 @@ pipeline {
         stage('Integration Test') {
             steps {
                 dir('web') {
-                    sh 'WEB_URL=http://localhost:8085 npx jest tests/integration.test.js --runInBand'
+                    sh 'WEB_URL=http://final-web:3000 npx jest tests/integration.test.js --runInBand'
                 }
             }
         }
