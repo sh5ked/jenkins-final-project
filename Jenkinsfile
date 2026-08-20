@@ -7,7 +7,32 @@ pipeline {
             steps {
                 dir('api') {
                     sh 'npm ci'
-                    sh 'npm test -- --coverage'
+                    sh 'npm test -- --coverage --coverageReporters=text --coverageReporters=json-summary'
+                }
+            }
+        }
+
+        stage('API Coverage Gate') {
+            steps {
+                dir('api') {
+                    sh '''
+                        node -e "
+                        const coverage = require('./coverage/coverage-summary.json');
+                        const total = coverage.total;
+                        const values = [
+                            total.statements.pct,
+                            total.branches.pct,
+                            total.functions.pct,
+                            total.lines.pct
+                        ];
+                        const min = Math.min(...values);
+                        console.log('API minimum coverage:', min + '%');
+                        if (min < 80) {
+                            console.error('API coverage is below 80%');
+                            process.exit(1);
+                        }
+                        "
+                    '''
                 }
             }
         }
@@ -16,7 +41,32 @@ pipeline {
             steps {
                 dir('web') {
                     sh 'npm ci'
-                    sh 'npm test -- --coverage --runInBand tests/app-web.test.js'
+                    sh 'npm test -- --coverage --coverageReporters=text --coverageReporters=json-summary --runInBand tests/app-web.test.js'
+                }
+            }
+        }
+
+        stage('WEB Coverage Gate') {
+            steps {
+                dir('web') {
+                    sh '''
+                        node -e "
+                        const coverage = require('./coverage/coverage-summary.json');
+                        const total = coverage.total;
+                        const values = [
+                            total.statements.pct,
+                            total.branches.pct,
+                            total.functions.pct,
+                            total.lines.pct
+                        ];
+                        const min = Math.min(...values);
+                        console.log('WEB minimum coverage:', min + '%');
+                        if (min < 80) {
+                            console.error('WEB coverage is below 80%');
+                            process.exit(1);
+                        }
+                        "
+                    '''
                 }
             }
         }
