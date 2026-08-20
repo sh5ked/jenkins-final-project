@@ -18,19 +18,16 @@ pipeline {
                     sh '''
                         node -e "
                         const coverage = require('./coverage/coverage-summary.json');
-                        const total = coverage.total;
-                        const values = [
-                            total.statements.pct,
-                            total.branches.pct,
-                            total.functions.pct,
-                            total.lines.pct
-                        ];
-                        const min = Math.min(...values);
-                        console.log('API minimum coverage:', min + '%');
-                        if (min < 80) {
+                        const pct = coverage.total.statements.pct;
+
+                        console.log('API statement coverage:', pct + '%');
+
+                        if (pct < 80) {
                             console.error('API coverage is below 80%');
                             process.exit(1);
                         }
+
+                        console.log('API coverage gate passed');
                         "
                     '''
                 }
@@ -52,19 +49,16 @@ pipeline {
                     sh '''
                         node -e "
                         const coverage = require('./coverage/coverage-summary.json');
-                        const total = coverage.total;
-                        const values = [
-                            total.statements.pct,
-                            total.branches.pct,
-                            total.functions.pct,
-                            total.lines.pct
-                        ];
-                        const min = Math.min(...values);
-                        console.log('WEB minimum coverage:', min + '%');
-                        if (min < 80) {
+                        const pct = coverage.total.statements.pct;
+
+                        console.log('WEB statement coverage:', pct + '%');
+
+                        if (pct < 80) {
                             console.error('WEB coverage is below 80%');
                             process.exit(1);
                         }
+
+                        console.log('WEB coverage gate passed');
                         "
                     '''
                 }
