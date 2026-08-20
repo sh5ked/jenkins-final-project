@@ -1,0 +1,23 @@
+services:
+
+  api:
+    build: ./api
+    container_name: final-api
+    networks:
+      - final-network
+
+  web:
+    build: ./web
+    container_name: final-web
+    ports:
+      - "8085:3000"
+    environment:
+      API_URL: http://api:3000
+    depends_on:
+      - api
+    networks:
+      - final-network
+
+networks:
+  final-network:
+    driver: bridge
