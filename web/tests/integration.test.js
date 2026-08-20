@@ -10,5 +10,5 @@ describe("WEB + API integration", () => {
         expect(response.body.message).toBe("Hello from WEB");
         expect(response.body.api).toBeDefined();
         expect(response.body.api.message).toBe("Hello from API");
-    });
+    }, 10000);
 });

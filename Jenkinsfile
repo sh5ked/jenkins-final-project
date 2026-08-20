@@ -68,17 +68,19 @@ pipeline {
         stage('Start Services') {
             steps {
                 sh '''
-                    export BUILD_NUMBER="${BUILD_NUMBER}"
-                    export GIT_COMMIT="$(git rev-parse HEAD)"
+                    export BUILD_NUMBER=${BUILD_NUMBER}
+                    export GIT_COMMIT=$(git rev-parse HEAD)
 
-                    echo "Build Number: ${BUILD_NUMBER}"
-                    echo "Git Commit: ${GIT_COMMIT}"
+                    echo "Build Number: $BUILD_NUMBER"
+                    echo "Git Commit: $GIT_COMMIT"
 
                     docker compose up -d --build
 
                     docker network connect jenkins-final-project_final-network jenkins || true
 
                     docker compose ps
+
+                    sleep 5
                 '''
             }
         }
@@ -86,7 +88,10 @@ pipeline {
         stage('Integration Test') {
             steps {
                 dir('web') {
-                    sh 'WEB_URL=http://final-web:3000 npx jest tests/integration.test.js --runInBand'
+                    sh '''
+                        WEB_URL=http://web:3000 \
+                        npx jest tests/integration.test.js --runInBand
+                    '''
                 }
             }
         }
@@ -94,7 +99,9 @@ pipeline {
 
     post {
         always {
-            sh 'docker compose down || true'
+            sh '''
+                docker compose down || true
+            '''
         }
     }
 }
