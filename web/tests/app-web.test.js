@@ -26,7 +26,7 @@ describe("WEB", () => {
         const response = await request(app).get("/");
 
         expect(response.statusCode).toBe(200);
-        expect(response.body.message).toBe("BROKEN");
+        expect(response.body.message).toBe("Hello from WEB");
         expect(response.body.api.message).toBe("Hello from API");
         expect(global.fetch).toHaveBeenCalled();
     });
