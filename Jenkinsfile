@@ -275,7 +275,7 @@ pipeline {
                     set -e
 
                     NEW="${NEW_COLOR}"
-                    SHORT_COMMIT="${GIT_COMMIT:0:7}"
+                    SHORT_COMMIT=$(printf '%s' "$GIT_COMMIT" | cut -c1-7)
 
                     echo "Waiting for API and WEB health..."
 
