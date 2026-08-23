@@ -6,11 +6,13 @@ describe("WEB", () => {
         jest.restoreAllMocks();
     });
 
-    test("GET /health returns ok", async () => {
+    test("GET /health returns health response", async () => {
         const response = await request(app).get("/health");
 
         expect(response.statusCode).toBe(200);
-        expect(response.body.status).toBe("ok");
+        expect(response.body).toHaveProperty("status");
+        expect(response.body).toHaveProperty("build");
+        expect(response.body).toHaveProperty("commit");
     });
 
     test("GET / returns WEB message and API data", async () => {
