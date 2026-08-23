@@ -118,9 +118,8 @@ pipeline {
 
         /*
          * DEV
-         * בדיקות ובנייה בלבד.
-         * השירותים עולים זמנית לצורך Integration Test,
-         * אבל אין Deployment ואין NGINX.
+         * בדיקות + בנייה + Integration Test.
+         * אין Deployment ואין NGINX.
          */
         stage('DEV Integration Environment') {
             when {
@@ -136,7 +135,7 @@ pipeline {
 
                     docker compose up -d
 
-                    docker network connect final-network jenkins || true
+                    docker network connect final-network jenkins 2>/dev/null || true
 
                     sleep 5
 
@@ -163,6 +162,7 @@ pipeline {
         /*
          * MAIN - BLUE/GREEN
          */
+
         stage('Prepare Blue-Green Network') {
             when {
                 branch 'main'
@@ -242,7 +242,10 @@ pipeline {
 
                     echo "Starting new ${NEW} version..."
 
-                    docker rm -f ${NEW}-web ${NEW}-api >/dev/null 2>&1 || true
+                    docker rm -f \
+                        ${NEW}-web \
+                        ${NEW}-api \
+                        >/dev/null 2>&1 || true
 
                     docker run -d \
                         --name ${NEW}-api \
@@ -279,8 +282,10 @@ pipeline {
 
                     echo "Waiting for API and WEB health..."
 
-                    for i in $(seq 1 30); do
+                    API_HEALTH=""
+                    WEB_HEALTH=""
 
+                    for i in $(seq 1 30); do
                         API_HEALTH=$(curl -fsS \
                             "http://${NEW}-api:3000/health" \
                             2>/dev/null || true)
@@ -302,41 +307,53 @@ pipeline {
                     echo "WEB health:"
                     echo "$WEB_HEALTH"
 
-                    node - "$API_HEALTH" "$BUILD_NUMBER" "$SHORT_COMMIT" <<'NODE'
-                    const health = JSON.parse(process.argv[2]);
-                    const expectedBuild = process.argv[3];
-                    const expectedCommit = process.argv[4];
+                    if [ -z "$API_HEALTH" ]; then
+                        echo "API health check failed."
+                        exit 1
+                    fi
 
-                    if (health.status !== "ok") {
-                        throw new Error("API status is not ok");
-                    }
+                    if [ -z "$WEB_HEALTH" ]; then
+                        echo "WEB health check failed."
+                        exit 1
+                    fi
 
-                    if (String(health.build) !== expectedBuild) {
-                        throw new Error("API build stamp mismatch");
-                    }
+                    API_HEALTH="$API_HEALTH" \
+                    BUILD_NUMBER="$BUILD_NUMBER" \
+                    SHORT_COMMIT="$SHORT_COMMIT" \
+                    node <<'NODE'
+const health = JSON.parse(process.env.API_HEALTH);
 
-                    if (String(health.commit) !== expectedCommit) {
-                        throw new Error("API commit stamp mismatch");
-                    }
-                    NODE
+if (health.status !== "ok") {
+    throw new Error("API status is not ok");
+}
 
-                    node - "$WEB_HEALTH" "$BUILD_NUMBER" "$SHORT_COMMIT" <<'NODE'
-                    const health = JSON.parse(process.argv[2]);
-                    const expectedBuild = process.argv[3];
-                    const expectedCommit = process.argv[4];
+if (String(health.build) !== String(process.env.BUILD_NUMBER)) {
+    throw new Error("API build stamp mismatch");
+}
 
-                    if (health.status !== "ok") {
-                        throw new Error("WEB status is not ok");
-                    }
+if (String(health.commit) !== process.env.SHORT_COMMIT) {
+    throw new Error("API commit stamp mismatch");
+}
+NODE
 
-                    if (String(health.build) !== expectedBuild) {
-                        throw new Error("WEB build stamp mismatch");
-                    }
+                    WEB_HEALTH="$WEB_HEALTH" \
+                    BUILD_NUMBER="$BUILD_NUMBER" \
+                    SHORT_COMMIT="$SHORT_COMMIT" \
+                    node <<'NODE'
+const health = JSON.parse(process.env.WEB_HEALTH);
 
-                    if (String(health.commit) !== expectedCommit) {
-                        throw new Error("WEB commit stamp mismatch");
-                    }
-                    NODE
+if (health.status !== "ok") {
+    throw new Error("WEB status is not ok");
+}
+
+if (String(health.build) !== String(process.env.BUILD_NUMBER)) {
+    throw new Error("WEB build stamp mismatch");
+}
+
+if (String(health.commit) !== process.env.SHORT_COMMIT) {
+    throw new Error("WEB commit stamp mismatch");
+}
+NODE
 
                     echo "New version health check passed."
                 '''
@@ -378,7 +395,7 @@ pipeline {
 
                     if [ -z "$NGINX_EXISTS" ]; then
 
-                        echo "First deployment: creating NGINX container."
+                        echo "First deployment: creating NGINX."
 
                         docker create \
                             --name ${NGINX} \
@@ -405,8 +422,8 @@ pipeline {
                             ${NGINX}:/etc/nginx/nginx.conf
 
                         docker exec ${NGINX} nginx -t
-                        docker exec ${NGINX} nginx -s reload
 
+                        docker exec ${NGINX} nginx -s reload
                     fi
                 '''
             }
@@ -421,38 +438,50 @@ pipeline {
                 sh '''
                     set -e
 
-                    echo "Testing stable public endpoint through NGINX..."
+                    echo "Testing stable public endpoint..."
+
+                    RESPONSE=""
 
                     for i in $(seq 1 20); do
-                        RESPONSE=$(curl -fsS http://frontend-nginx/health 2>/dev/null || true)
+                        RESPONSE=$(curl -fsS \
+                            http://frontend-nginx/health \
+                            2>/dev/null || true)
 
                         if [ -n "$RESPONSE" ]; then
-                            echo "$RESPONSE"
                             break
                         fi
 
                         sleep 1
                     done
 
-                    SHORT_COMMIT="${GIT_COMMIT:0:7}"
+                    echo "NGINX response:"
+                    echo "$RESPONSE"
 
-                    node - "$RESPONSE" "$BUILD_NUMBER" "$SHORT_COMMIT" <<'NODE'
-                    const health = JSON.parse(process.argv[2]);
-                    const expectedBuild = process.argv[3];
-                    const expectedCommit = process.argv[4];
+                    if [ -z "$RESPONSE" ]; then
+                        echo "NGINX traffic verification failed."
+                        exit 1
+                    fi
 
-                    if (health.status !== "ok") {
-                        throw new Error("NGINX returned a non-ok health response");
-                    }
+                    SHORT_COMMIT=$(printf '%s' "$GIT_COMMIT" | cut -c1-7)
 
-                    if (String(health.build) !== expectedBuild) {
-                        throw new Error("NGINX active version has unexpected build number");
-                    }
+                    RESPONSE="$RESPONSE" \
+                    BUILD_NUMBER="$BUILD_NUMBER" \
+                    SHORT_COMMIT="$SHORT_COMMIT" \
+                    node <<'NODE'
+const health = JSON.parse(process.env.RESPONSE);
 
-                    if (String(health.commit) !== expectedCommit) {
-                        throw new Error("NGINX active version has unexpected commit");
-                    }
-                    NODE
+if (health.status !== "ok") {
+    throw new Error("NGINX returned non-ok health status");
+}
+
+if (String(health.build) !== String(process.env.BUILD_NUMBER)) {
+    throw new Error("Active build number mismatch");
+}
+
+if (String(health.commit) !== process.env.SHORT_COMMIT) {
+    throw new Error("Active commit mismatch");
+}
+NODE
 
                     echo "Traffic switch verified successfully."
                 '''
@@ -478,7 +507,10 @@ pipeline {
 
                     echo "Stopping old ${OLD} version..."
 
-                    docker rm -f ${OLD}-web ${OLD}-api
+                    docker rm -f \
+                        ${OLD}-web \
+                        ${OLD}-api \
+                        >/dev/null 2>&1 || true
 
                     echo "Blue-Green deployment completed."
                     echo "Active version: ${NEW}"
@@ -522,12 +554,6 @@ pipeline {
             echo "Commit: ${env.GIT_COMMIT}"
             echo "======================================"
 
-            /*
-             * חשוב:
-             * ב-MAIN אין כאן docker compose down.
-             * אם Health/Integration נכשלו, הישן נשאר חי.
-             */
-
             script {
                 if (env.BRANCH_NAME == 'main' && env.NEW_COLOR) {
                     sh '''
@@ -536,7 +562,7 @@ pipeline {
                         docker rm -f \
                             ${NEW_COLOR}-web \
                             ${NEW_COLOR}-api \
-                            2>/dev/null || true
+                            >/dev/null 2>&1 || true
 
                         if [ "${ACTIVE_COLOR}" != "none" ] && \
                            [ -f deploy/nginx.previous.conf ]; then
