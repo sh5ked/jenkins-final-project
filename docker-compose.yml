@@ -1,14 +1,21 @@
 services:
-
   api:
-    build: ./api
-    container_name: final-api
+    image: jenkins-final-project-api:latest
+    build:
+      context: ./api
+      args:
+        BUILD_NUMBER: ${BUILD_NUMBER:-local}
+        GIT_COMMIT: ${GIT_COMMIT:-local}
     networks:
       - final-network
 
   web:
-    build: ./web
-    container_name: final-web
+    image: jenkins-final-project-web:latest
+    build:
+      context: ./web
+      args:
+        BUILD_NUMBER: ${BUILD_NUMBER:-local}
+        GIT_COMMIT: ${GIT_COMMIT:-local}
     ports:
       - "8085:3000"
     environment:
@@ -20,4 +27,5 @@ services:
 
 networks:
   final-network:
+    name: final-network
     driver: bridge
