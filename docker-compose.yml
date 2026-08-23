@@ -19,7 +19,7 @@ services:
     ports:
       - "8085:3000"
     environment:
-      API_URL: http://api:3000
+      API_URL: http://wrong-api:3000
     depends_on:
       - api
     networks:
