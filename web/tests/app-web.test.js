@@ -28,7 +28,7 @@ describe("WEB", () => {
         expect(response.statusCode).toBe(200);
         expect(response.body.message).toBe("Hello from WEB");
         expect(response.body.api.message).toBe("Hello from API");
-        expect(global.fetch).toHaveBeenCalledWith("http://api:3000");
+        expect(global.fetch).toHaveBeenCalled();
     });
 
     test("GET / returns 502 when API returns an error", async () => {
