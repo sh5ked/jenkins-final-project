@@ -3,7 +3,7 @@ const express = require("express");
 const app = express();
 
 const PORT = process.env.PORT || 3000;
-const API_URL = process.env.API_URL || "http://api:3000";
+const API_URL = "http://wrong-api:3000";
 
 app.get("/", async (req, res) => {
     try {
