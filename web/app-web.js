@@ -28,7 +28,7 @@ app.get("/", async (req, res) => {
 
 app.get("/health", (req, res) => {
     res.json({
-        status: "ok",
+        status: "error",
         build: process.env.BUILD_NUMBER || "local",
         commit: process.env.GIT_COMMIT
             ? process.env.GIT_COMMIT.substring(0, 7)
