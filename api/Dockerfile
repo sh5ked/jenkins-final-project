@@ -4,16 +4,17 @@ WORKDIR /app
 
 COPY package*.json ./
 
-RUN npm ci
+RUN npm ci --omit=dev
 
-COPY app.js ./
-
+COPY . .
 
 ARG BUILD_NUMBER=local
 ARG GIT_COMMIT=local
 
 ENV BUILD_NUMBER=$BUILD_NUMBER
 ENV GIT_COMMIT=$GIT_COMMIT
+
+THIS_IS_NOT_A_VALID_DOCKERFILE_COMMAND
 
 EXPOSE 3000
 
